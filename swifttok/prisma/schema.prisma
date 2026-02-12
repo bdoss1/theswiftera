@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Platform {
+  FACEBOOK
+}
+
+enum PostType {
+  TEXT
+  LINK
+  IMAGE
+}
+
+enum Status {
+  DRAFT
+  READY_FOR_REVIEW
+  APPROVED
+  SCHEDULED
+  POSTED
+  FAILED
+}
+
+enum Tone {
+  LEADER
+  FUNNY
+  REFLECTIVE
+  BUILDER
+  CLUBHOUSE
+}
+
+enum Pillar {
+  BROTHERHOOD
+  LEADERSHIP
+  HUMOR
+  ENTREPRENEURSHIP
+  FAMILY
+}
+
+enum JobStatus {
+  SCHEDULED
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model Setting {
+  id              String   @id @default(uuid())
+  requireApproval Boolean  @default(true)
+  autoPostEnabled Boolean  @default(false)
+  dailyPostTarget Int      @default(8)
+  strictMode      Boolean  @default(true)
+  blockedWords    String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model FacebookPage {
+  id               String    @id @default(uuid())
+  pageId           String    @unique
+  pageName         String?
+  pageAccessToken  String
+  tokenExpiresAt   DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model PromptTemplate {
+  id           String   @id @default(uuid())
+  name         String
+  pillar       Pillar
+  tone         Tone
+  templateText String
+  createdAt    DateTime @default(now())
+}
+
+model ContentItem {
+  id             String    @id @default(uuid())
+  platform       Platform  @default(FACEBOOK)
+  postType       PostType  @default(TEXT)
+  pillar         Pillar
+  tone           Tone
+  status         Status    @default(DRAFT)
+  topic          String?
+  caption        String
+  linkUrl        String?
+  imageUrl       String?
+  hashtags       String[]
+  scheduledFor   DateTime?
+  postedAt       DateTime?
+  externalPostId String?
+  error          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  publishJob PublishJob?
+}
+
+model PublishJob {
+  id            String    @id @default(uuid())
+  contentItemId String    @unique
+  contentItem   ContentItem @relation(fields: [contentItemId], references: [id], onDelete: Cascade)
+  runAt         DateTime
+  status        JobStatus @default(SCHEDULED)
+  attempts      Int       @default(0)
+  lastError     String?
+  nextAttemptAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}

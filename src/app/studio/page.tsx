@@ -8,7 +8,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Save, Sparkles } from "lucide-react";
+import { FacebookPreview } from "@/components/facebook-preview";
+import { Loader2, Save, Sparkles, Eye, EyeOff } from "lucide-react";
+import { toast } from "sonner";
 
 interface Variant {
   caption: string;
@@ -17,6 +19,12 @@ interface Variant {
   hook: string;
   saved?: boolean;
 }
+
+const PLATFORMS = [
+  { value: "FACEBOOK", label: "Facebook" },
+  { value: "INSTAGRAM", label: "Instagram (coming soon)" },
+  { value: "X", label: "X / Twitter (coming soon)" },
+];
 
 const PILLARS = [
   { value: "BROTHERHOOD", label: "Brotherhood & Motorcycle Culture" },
@@ -53,6 +61,7 @@ const CTA_STYLES = [
 ];
 
 export default function StudioPage() {
+  const [platform, setPlatform] = useState("FACEBOOK");
   const [pillar, setPillar] = useState("BROTHERHOOD");
   const [tone, setTone] = useState("LEADER");
   const [postType, setPostType] = useState("TEXT");
@@ -63,12 +72,14 @@ export default function StudioPage() {
   const [linkUrl, setLinkUrl] = useState("");
   const [variants, setVariants] = useState<Variant[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [previewIdx, setPreviewIdx] = useState<number | null>(null);
 
   async function handleGenerate() {
+    if (platform !== "FACEBOOK") {
+      toast.info(`${platform} publishing is coming soon. Generating Facebook-style content for now.`);
+    }
     setLoading(true);
-    setError("");
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -78,8 +89,9 @@ export default function StudioPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Generation failed");
       setVariants(data.variants.map((v: Variant) => ({ ...v, saved: false })));
+      toast.success(`Generated ${data.variants.length} variant(s)`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      toast.error(err instanceof Error ? err.message : "Generation failed");
     } finally {
       setLoading(false);
     }
@@ -94,9 +106,7 @@ export default function StudioPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: [{
-            pillar,
-            tone,
-            postType,
+            pillar, tone, postType, platform,
             caption: v.caption,
             hashtags: v.hashtags,
             topic: topic || undefined,
@@ -106,8 +116,9 @@ export default function StudioPage() {
       });
       if (!res.ok) throw new Error("Save failed");
       setVariants((prev) => prev.map((item, i) => (i === index ? { ...item, saved: true } : item)));
+      toast.success("Saved as draft");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      toast.error(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
@@ -123,9 +134,7 @@ export default function StudioPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: unsaved.map((v) => ({
-            pillar,
-            tone,
-            postType,
+            pillar, tone, postType, platform,
             caption: v.caption,
             hashtags: v.hashtags,
             topic: topic || undefined,
@@ -135,8 +144,9 @@ export default function StudioPage() {
       });
       if (!res.ok) throw new Error("Save failed");
       setVariants((prev) => prev.map((item) => ({ ...item, saved: true })));
+      toast.success(`Saved ${unsaved.length} draft(s)`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      toast.error(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
@@ -157,7 +167,12 @@ export default function StudioPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>Platform</Label>
-              <Input value="Facebook" disabled />
+              <Select value={platform} onValueChange={setPlatform}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {PLATFORMS.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
@@ -234,12 +249,6 @@ export default function StudioPage() {
         </Card>
 
         <div className="lg:col-span-2 space-y-4">
-          {error && (
-            <Card className="border-red-200 bg-red-50">
-              <CardContent className="pt-6 text-sm text-red-700">{error}</CardContent>
-            </Card>
-          )}
-
           {variants.length > 0 && (
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">{variants.length} variant(s) generated</p>
@@ -250,7 +259,7 @@ export default function StudioPage() {
           )}
 
           {variants.map((v, i) => (
-            <Card key={i} className={v.saved ? "border-green-200 bg-green-50/50" : ""}>
+            <Card key={i} className={v.saved ? "border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20" : ""}>
               <CardContent className="pt-6 space-y-3">
                 {v.hook && <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Hook: {v.hook}</p>}
                 <p className="whitespace-pre-wrap text-sm">{v.caption}</p>
@@ -268,7 +277,24 @@ export default function StudioPage() {
                       <Save className="h-3 w-3" /> Save as Draft
                     </Button>
                   )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setPreviewIdx(previewIdx === i ? null : i)}
+                  >
+                    {previewIdx === i ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                    {previewIdx === i ? "Hide Preview" : "Preview"}
+                  </Button>
                 </div>
+                {previewIdx === i && (
+                  <div className="pt-2">
+                    <FacebookPreview
+                      caption={v.caption}
+                      hashtags={v.hashtags}
+                      linkUrl={postType === "LINK" ? linkUrl : null}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}

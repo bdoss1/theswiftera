@@ -1,9 +1,11 @@
-import { PrismaClient, Status, JobStatus } from "@prisma/client";
+import { PrismaClient, Status, JobStatus, Platform } from "@prisma/client";
 
 const prisma = new PrismaClient();
 const POLL_INTERVAL = Number(process.env.WORKER_POLL_INTERVAL_MS) || 30000;
 const MAX_ATTEMPTS = 3;
 const BACKOFF_MINUTES = [1, 5, 15];
+const RATE_LIMIT_WINDOW_MINUTES = 60;
+const RATE_LIMIT_PER_WINDOW = 200;
 
 const GRAPH_API_BASE = "https://graph.facebook.com/v19.0";
 
@@ -33,6 +35,46 @@ async function publishToFacebook(
   }
 
   return data.id;
+}
+
+async function recordRateLimitCall() {
+  const now = new Date();
+  const endpoint = "feed";
+
+  const existing = await prisma.rateLimit.findUnique({
+    where: { platform_endpoint: { platform: Platform.FACEBOOK, endpoint } },
+  });
+
+  if (existing) {
+    const windowStart = new Date(existing.windowStart);
+    const windowEnd = new Date(windowStart.getTime() + existing.windowMinutes * 60 * 1000);
+
+    if (now > windowEnd) {
+      // Window expired — reset
+      await prisma.rateLimit.update({
+        where: { id: existing.id },
+        data: { callCount: 1, windowStart: now, lastCallAt: now },
+      });
+    } else {
+      // Increment within window
+      await prisma.rateLimit.update({
+        where: { id: existing.id },
+        data: { callCount: existing.callCount + 1, lastCallAt: now },
+      });
+    }
+  } else {
+    await prisma.rateLimit.create({
+      data: {
+        platform: Platform.FACEBOOK,
+        endpoint,
+        callCount: 1,
+        windowStart: now,
+        windowMinutes: RATE_LIMIT_WINDOW_MINUTES,
+        limitPerWindow: RATE_LIMIT_PER_WINDOW,
+        lastCallAt: now,
+      },
+    });
+  }
 }
 
 async function processJobs() {
@@ -78,6 +120,11 @@ async function processJobs() {
         fbPage.pageAccessToken,
         message,
         item.postType === "LINK" ? item.linkUrl : null
+      );
+
+      // Track rate limit
+      await recordRateLimitCall().catch((e) =>
+        console.warn("  Rate limit tracking failed:", e)
       );
 
       // Success

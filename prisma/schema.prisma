@@ -9,6 +9,8 @@ datasource db {
 
 enum Platform {
   FACEBOOK
+  INSTAGRAM
+  X
 }
 
 enum PostType {
@@ -77,6 +79,7 @@ model PromptTemplate {
   tone         Tone
   templateText String
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
 }
 
 model ContentItem {
@@ -112,4 +115,19 @@ model PublishJob {
   nextAttemptAt DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+}
+
+model RateLimit {
+  id             String   @id @default(uuid())
+  platform       Platform
+  endpoint       String
+  callCount      Int      @default(0)
+  windowStart    DateTime @default(now())
+  windowMinutes  Int      @default(60)
+  limitPerWindow Int      @default(200)
+  lastCallAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([platform, endpoint])
 }

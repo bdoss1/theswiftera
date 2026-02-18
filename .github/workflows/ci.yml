@@ -9,7 +9,7 @@ on:
 env:
   NODE_VERSION: '20'
   DATABASE_URL: 'postgresql://swifttok:swifttok@localhost:5432/swifttok?schema=public'
-  OPENAI_API_KEY: 'sk-test-not-real'
+  OPENAI_API_KEY: 'test-placeholder-key'
 
 jobs:
   lint:

@@ -41,7 +41,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       },
     }),
   ],
-  secret: config.auth.secret || "swifttok-dev-secret-change-me",
+  secret: config.auth.secret,
   pages: {
     signIn: "/login",
   },

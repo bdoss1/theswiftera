@@ -67,6 +67,23 @@ export default function ReviewPage() {
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
+  const updateStatus = useCallback(async (id: string, status: string) => {
+    setActionLoading(id);
+    try {
+      await fetch(`/api/content/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      toast.success(`Marked as ${status.replace(/_/g, " ").toLowerCase()}`);
+      await fetchItems();
+    } catch {
+      toast.error("Update failed");
+    } finally {
+      setActionLoading(null);
+    }
+  }, [fetchItems]);
+
   // Keyboard shortcuts
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -111,7 +128,7 @@ export default function ReviewPage() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [items, focusIdx, editingId, scheduleId, previewId]);
+  }, [items, focusIdx, editingId, scheduleId, previewId, updateStatus]);
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -144,23 +161,6 @@ export default function ReviewPage() {
       await fetchItems();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Bulk update failed");
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
-  async function updateStatus(id: string, status: string) {
-    setActionLoading(id);
-    try {
-      await fetch(`/api/content/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      toast.success(`Marked as ${status.replace(/_/g, " ").toLowerCase()}`);
-      await fetchItems();
-    } catch {
-      toast.error("Update failed");
     } finally {
       setActionLoading(null);
     }

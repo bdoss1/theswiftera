@@ -1,24 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Status } from "@prisma/client";
+import { AutoBuildSchema } from "@/lib/validation";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limiter";
+import { createChildLogger } from "@/lib/logger";
+import { config } from "@/lib/config";
 
-const DEFAULT_TIMES = [
-  "09:00", "10:30", "12:00", "13:30", "15:00", "16:30", "18:00", "19:30", "21:00",
-];
+const log = createChildLogger("api:auto-build");
 
 export async function POST(req: NextRequest) {
+  const rl = checkRateLimit(req);
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+
   try {
     const body = await req.json();
-    const { date, targetCount } = body;
+    const parsed = AutoBuildSchema.safeParse(body);
 
-    if (!date) {
-      return NextResponse.json({ error: "date is required (YYYY-MM-DD)" }, { status: 400 });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
     }
 
-    const count = Math.min(Math.max(1, targetCount || 8), DEFAULT_TIMES.length);
-    const times = DEFAULT_TIMES.slice(0, count);
+    const { date, targetCount } = parsed.data;
+    const times = config.content.defaultScheduleTimes;
+    const count = Math.min(Math.max(1, targetCount || 8), times.length);
+    const selectedTimes = times.slice(0, count);
 
-    // Get approved items without a schedule
     const available = await prisma.contentItem.findMany({
       where: {
         status: { in: [Status.APPROVED] },
@@ -33,8 +42,8 @@ export async function POST(req: NextRequest) {
     }
 
     const scheduled = [];
-    for (let i = 0; i < Math.min(available.length, times.length); i++) {
-      const [hours, minutes] = times[i].split(":").map(Number);
+    for (let i = 0; i < Math.min(available.length, selectedTimes.length); i++) {
+      const [hours, minutes] = selectedTimes[i].split(":").map(Number);
       const runAt = new Date(date);
       runAt.setHours(hours, minutes, 0, 0);
 
@@ -61,12 +70,13 @@ export async function POST(req: NextRequest) {
       scheduled.push(updated);
     }
 
+    log.info({ date, count: scheduled.length }, "Auto-build completed");
     return NextResponse.json({
       scheduled,
       message: `Scheduled ${scheduled.length} items for ${date}`,
     });
   } catch (err) {
-    console.error("Auto-build error:", err);
+    log.error({ err }, "Auto-build error");
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Auto-build failed" },
       { status: 500 }

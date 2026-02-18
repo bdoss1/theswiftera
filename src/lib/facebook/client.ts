@@ -1,4 +1,6 @@
-const GRAPH_API_BASE = "https://graph.facebook.com/v19.0";
+import { config } from "@/lib/config";
+
+const GRAPH_API_BASE = config.facebook.graphApiBase;
 
 export interface FacebookApiError {
   message: string;

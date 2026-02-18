@@ -1,13 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { Pillar, Tone, PostType, Status, Platform } from "@prisma/client";
+import { Status, Platform, PostType } from "@prisma/client";
+import { ContentCreateSchema } from "@/lib/validation";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limiter";
+import { createChildLogger } from "@/lib/logger";
+
+const log = createChildLogger("api:content");
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status") as Status | null;
-  const pillar = searchParams.get("pillar") as Pillar | null;
-  const tone = searchParams.get("tone") as Tone | null;
-  const date = searchParams.get("date"); // YYYY-MM-DD
+  const pillar = searchParams.get("pillar");
+  const tone = searchParams.get("tone");
+  const date = searchParams.get("date");
 
   const where: Record<string, unknown> = {};
   if (status) where.status = status;
@@ -31,25 +36,22 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const rl = checkRateLimit(req);
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+
   try {
     const body = await req.json();
-    const { items } = body as {
-      items: Array<{
-        pillar: Pillar;
-        tone: Tone;
-        postType: PostType;
-        caption: string;
-        hashtags?: string[];
-        topic?: string;
-        linkUrl?: string;
-      }>;
-    };
+    const parsed = ContentCreateSchema.safeParse(body);
 
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ error: "No items provided" }, { status: 400 });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
     }
 
-    // Check auto-post settings
+    const { items } = parsed.data;
+
     const settings = await prisma.setting.findFirst();
     const autoApprove = settings?.autoPostEnabled && !settings?.strictMode;
 
@@ -57,8 +59,8 @@ export async function POST(req: NextRequest) {
       items.map((item) =>
         prisma.contentItem.create({
           data: {
-            platform: Platform.FACEBOOK,
-            postType: item.postType || PostType.TEXT,
+            platform: (item.platform as Platform) || Platform.FACEBOOK,
+            postType: (item.postType as PostType) || PostType.TEXT,
             pillar: item.pillar,
             tone: item.tone,
             status: autoApprove ? Status.APPROVED : Status.DRAFT,
@@ -71,9 +73,10 @@ export async function POST(req: NextRequest) {
       )
     );
 
+    log.info({ count: created.length }, "Content items created");
     return NextResponse.json({ items: created });
   } catch (err) {
-    console.error("Content create error:", err);
+    log.error({ err }, "Content create error");
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to create content" },
       { status: 500 }

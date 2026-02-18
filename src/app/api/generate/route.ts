@@ -1,19 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateVariants } from "@/lib/ai/openai";
-import { Pillar, Tone } from "@prisma/client";
+import { GenerateSchema } from "@/lib/validation";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limiter";
+import { createChildLogger } from "@/lib/logger";
+
+const log = createChildLogger("api:generate");
 
 export async function POST(req: NextRequest) {
+  const rl = checkRateLimit(req);
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+
   try {
     const body = await req.json();
-    const { pillar, tone, postType, length, ctaStyle, topic, variantCount } = body;
+    const parsed = GenerateSchema.safeParse(body);
 
-    if (!pillar || !tone || !postType || !length || !variantCount) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
     }
 
+    const { pillar, tone, postType, length, ctaStyle, topic, variantCount } = parsed.data;
+
+    log.info({ pillar, tone, variantCount }, "Generating content variants");
+
     const variants = await generateVariants({
-      pillar: pillar as Pillar,
-      tone: tone as Tone,
+      pillar,
+      tone,
       postType,
       length,
       ctaStyle: ctaStyle || "none",
@@ -21,9 +35,10 @@ export async function POST(req: NextRequest) {
       variantCount: Math.min(Math.max(1, variantCount), 10),
     });
 
+    log.info({ count: variants.length }, "Content variants generated");
     return NextResponse.json({ variants });
   } catch (err) {
-    console.error("Generate error:", err);
+    log.error({ err }, "Generate error");
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Generation failed" },
       { status: 500 }

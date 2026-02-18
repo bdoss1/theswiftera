@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Platform } from "@prisma/client";
+import { config } from "@/lib/config";
 
 export async function GET() {
   const limits = await prisma.rateLimit.findMany({
@@ -9,7 +10,6 @@ export async function GET() {
   return NextResponse.json({ limits });
 }
 
-// Called by the worker/publish to record an API call
 export async function POST() {
   try {
     const now = new Date();
@@ -26,8 +26,8 @@ export async function POST() {
         endpoint: "feed",
         callCount: 1,
         windowStart: now,
-        windowMinutes: 60,
-        limitPerWindow: 200,
+        windowMinutes: config.rateLimit.windowMinutes,
+        limitPerWindow: config.rateLimit.perWindow,
         lastCallAt: now,
       },
       update: {
@@ -36,7 +36,6 @@ export async function POST() {
       },
     });
 
-    // Check if window has expired and reset
     const windowEnd = new Date(limit.windowStart.getTime() + limit.windowMinutes * 60 * 1000);
     if (now > windowEnd) {
       await prisma.rateLimit.update({

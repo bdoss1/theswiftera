@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { Pillar, Tone } from "@prisma/client";
+import { TemplateCreateSchema } from "@/lib/validation";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limiter";
+import { createChildLogger } from "@/lib/logger";
+
+const log = createChildLogger("api:templates");
 
 export async function GET() {
   const templates = await prisma.promptTemplate.findMany({
@@ -10,23 +14,25 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const rl = checkRateLimit(req);
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+
   try {
     const body = await req.json();
-    const { name, pillar, tone, templateText } = body;
+    const parsed = TemplateCreateSchema.safeParse(body);
 
-    if (!name || !pillar || !tone || !templateText) {
-      return NextResponse.json({ error: "All fields required" }, { status: 400 });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
     }
 
     const template = await prisma.promptTemplate.create({
-      data: {
-        name,
-        pillar: pillar as Pillar,
-        tone: tone as Tone,
-        templateText,
-      },
+      data: parsed.data,
     });
 
+    log.info({ id: template.id }, "Template created");
     return NextResponse.json({ template });
   } catch (err) {
     return NextResponse.json(

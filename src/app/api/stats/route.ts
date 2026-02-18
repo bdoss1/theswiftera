@@ -22,7 +22,6 @@ export async function GET() {
   const totalPosts = await prisma.contentItem.count();
   const approved = await prisma.contentItem.count({ where: { status: Status.APPROVED } });
 
-  // Chart data: posts per day for last 14 days
   const chartDays = 14;
   const chartStart = new Date(today);
   chartStart.setDate(chartStart.getDate() - chartDays + 1);
@@ -58,7 +57,6 @@ export async function GET() {
     dailyData.push({ date: dateStr, posted, created });
   }
 
-  // Pillar breakdown
   const pillarCounts = await prisma.contentItem.groupBy({
     by: ["pillar"],
     _count: { id: true },

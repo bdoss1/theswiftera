@@ -1,29 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Platform, PostType, Pillar, Tone, Status } from "@prisma/client";
+import { ContentImportSchema } from "@/lib/validation";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limiter";
+import { createChildLogger } from "@/lib/logger";
+
+const log = createChildLogger("api:content:import");
 
 export async function POST(req: NextRequest) {
+  const rl = checkRateLimit(req);
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+
   try {
     const body = await req.json();
-    const { items } = body as {
-      items: Array<{
-        platform?: string;
-        postType?: string;
-        pillar: string;
-        tone: string;
-        status?: string;
-        caption: string;
-        hashtags?: string[];
-        topic?: string;
-        linkUrl?: string;
-      }>;
-    };
+    const parsed = ContentImportSchema.safeParse(body);
 
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ error: "No items to import" }, { status: 400 });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
     }
 
+    const { items } = parsed.data;
     let imported = 0;
+
     for (const item of items) {
       try {
         await prisma.contentItem.create({
@@ -45,6 +46,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    log.info({ imported, total: items.length }, "Content import completed");
     return NextResponse.json({ imported, total: items.length });
   } catch (err) {
     return NextResponse.json(

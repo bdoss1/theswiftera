@@ -35,6 +35,24 @@ export async function publishLinkPost(
   return result.id;
 }
 
+/**
+ * Publish a photo post to Facebook.
+ * The imageUrl must be a publicly accessible URL.
+ */
+export async function publishImagePost(
+  pageId: string,
+  accessToken: string,
+  message: string,
+  imageUrl: string
+): Promise<string> {
+  const result = await facebookPost<PublishResult>(`/${pageId}/photos`, {
+    message,
+    url: imageUrl,
+    access_token: accessToken,
+  });
+  return result.id;
+}
+
 export async function testConnection(
   pageId: string,
   accessToken: string

@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { testConnection } from "@/lib/facebook/publish";
+import { FacebookConfigSchema } from "@/lib/validation";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limiter";
+import { createChildLogger } from "@/lib/logger";
+
+const log = createChildLogger("api:facebook");
 
 export async function GET() {
   const page = await prisma.facebookPage.findFirst();
   if (!page) {
     return NextResponse.json({ page: null });
   }
-  // Don't expose full token
   return NextResponse.json({
     page: {
       id: page.id,
@@ -20,13 +24,21 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const rl = checkRateLimit(req);
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+
   try {
     const body = await req.json();
-    const { pageId, pageAccessToken } = body;
+    const parsed = FacebookConfigSchema.safeParse(body);
 
-    if (!pageId || !pageAccessToken) {
-      return NextResponse.json({ error: "pageId and pageAccessToken required" }, { status: 400 });
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
     }
+
+    const { pageId, pageAccessToken } = parsed.data;
 
     const page = await prisma.facebookPage.upsert({
       where: { pageId },
@@ -34,6 +46,7 @@ export async function POST(req: NextRequest) {
       update: { pageAccessToken },
     });
 
+    log.info({ pageId }, "Facebook page configured");
     return NextResponse.json({
       page: {
         id: page.id,
@@ -43,7 +56,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
-    console.error("Facebook config error:", err);
+    log.error({ err }, "Facebook config error");
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to save" },
       { status: 500 }
@@ -51,8 +64,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function PUT(req: NextRequest) {
-  // Test connection
+export async function PUT() {
   try {
     const page = await prisma.facebookPage.findFirst();
     if (!page) {

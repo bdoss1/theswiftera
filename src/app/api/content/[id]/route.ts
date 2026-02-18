@@ -1,12 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Status } from "@prisma/client";
+import { ContentUpdateSchema } from "@/lib/validation";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limiter";
+import { createChildLogger } from "@/lib/logger";
+
+const log = createChildLogger("api:content:[id]");
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const rl = checkRateLimit(req);
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+
   try {
     const { id } = await params;
     const body = await req.json();
-    const { status, caption, scheduledFor, linkUrl } = body;
+    const parsed = ContentUpdateSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+
+    const { status, caption, scheduledFor, linkUrl } = parsed.data;
 
     const item = await prisma.contentItem.findUnique({ where: { id } });
     if (!item) {
@@ -27,7 +44,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const updated = await prisma.contentItem.update({ where: { id }, data });
 
-    // If scheduling, create or update PublishJob
     if (updated.status === Status.SCHEDULED && updated.scheduledFor) {
       await prisma.publishJob.upsert({
         where: { contentItemId: id },
@@ -45,9 +61,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       });
     }
 
+    log.info({ id, status: updated.status }, "Content item updated");
     return NextResponse.json({ item: updated });
   } catch (err) {
-    console.error("Content update error:", err);
+    log.error({ err }, "Content update error");
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Update failed" },
       { status: 500 }
@@ -56,12 +73,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const rl = checkRateLimit(req);
+  if (!rl.allowed) return rateLimitResponse(rl.resetAt);
+
   try {
     const { id } = await params;
     await prisma.contentItem.delete({ where: { id } });
+    log.info({ id }, "Content item deleted");
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("Content delete error:", err);
+    log.error({ err }, "Content delete error");
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Delete failed" },
       { status: 500 }

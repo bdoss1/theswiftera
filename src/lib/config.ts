@@ -25,6 +25,7 @@ export const config = {
   // OpenAI
   openai: {
     model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+    imageModel: process.env.OPENAI_IMAGE_MODEL || "dall-e-3",
     maxRetries: Number(process.env.OPENAI_MAX_RETRIES) || 3,
     retryDelayMs: Number(process.env.OPENAI_RETRY_DELAY_MS) || 1000,
     maxTokens: Number(process.env.OPENAI_MAX_TOKENS) || 4000,

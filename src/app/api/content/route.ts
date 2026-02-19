@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
             caption: item.caption,
             hashtags: item.hashtags || [],
             linkUrl: item.linkUrl || null,
+            imageUrl: item.imageUrl || null,
           },
         })
       )

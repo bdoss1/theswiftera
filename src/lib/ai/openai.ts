@@ -115,6 +115,67 @@ export async function generateVariants(input: {
 }
 
 /**
+ * Generate an image using DALL-E.
+ */
+export async function generateImage(input: {
+  prompt: string;
+  size?: "1024x1024" | "1024x1792" | "1792x1024";
+}): Promise<{ imageUrl: string }> {
+  const client = getClient();
+  const model = config.openai.imageModel;
+
+  log.info({ prompt: input.prompt.slice(0, 100), model }, "Generating image");
+
+  const response = await withRetry(
+    () =>
+      client.images.generate({
+        model,
+        prompt: input.prompt,
+        n: 1,
+        size: input.size || "1024x1024",
+      }),
+    "openai-image-generate"
+  );
+
+  const url = response.data?.[0]?.url;
+  if (!url) throw new Error("No image URL in response");
+
+  return { imageUrl: url };
+}
+
+/**
+ * Create a variation of an existing image using DALL-E 2.
+ * Accepts the image as a Buffer (read from uploaded file).
+ */
+export async function createImageVariation(input: {
+  imageBuffer: Buffer;
+  filename: string;
+  size?: "256x256" | "512x512" | "1024x1024";
+}): Promise<{ imageUrl: string }> {
+  const client = getClient();
+
+  log.info({ filename: input.filename }, "Creating image variation");
+
+  const file = new File([new Uint8Array(input.imageBuffer)], input.filename, { type: "image/png" });
+
+  const response = await withRetry(
+    () =>
+      client.images.createVariation({
+        image: file,
+        n: 1,
+        size: input.size || "1024x1024",
+        model: "dall-e-2",
+      }),
+    "openai-image-variation"
+  );
+
+  const url = response.data?.[0]?.url;
+  if (!url) throw new Error("No image URL in variation response");
+
+  return { imageUrl: url };
+}
+
+/**
  * Generate hashtag suggestions for a given caption using OpenAI.
  */
 export async function generateHashtags(

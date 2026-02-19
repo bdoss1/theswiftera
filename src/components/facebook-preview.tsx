@@ -7,10 +7,11 @@ interface Props {
   caption: string;
   hashtags: string[];
   linkUrl?: string | null;
+  imageUrl?: string | null;
   pageName?: string;
 }
 
-export function FacebookPreview({ caption, hashtags, linkUrl, pageName = "Swift the Great" }: Props) {
+export function FacebookPreview({ caption, hashtags, linkUrl, imageUrl, pageName = "Swift the Great" }: Props) {
   const hashtagStr = hashtags.length > 0
     ? "\n\n" + hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).join(" ")
     : "";
@@ -34,6 +35,9 @@ export function FacebookPreview({ caption, hashtags, linkUrl, pageName = "Swift 
         <div className="px-3 pb-2">
           <p className="text-sm whitespace-pre-wrap">{caption}{hashtagStr}</p>
         </div>
+        {imageUrl && (
+          <img src={imageUrl} alt="Post image" className="w-full object-cover max-h-80" />
+        )}
         {linkUrl && (
           <div className="mx-3 mb-2 rounded border bg-muted p-3">
             <p className="text-xs text-muted-foreground truncate">{linkUrl}</p>

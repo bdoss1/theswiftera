@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { FacebookPreview } from "@/components/facebook-preview";
-import { Loader2, Save, Sparkles, Eye, EyeOff } from "lucide-react";
+import { Loader2, Save, Sparkles, Eye, EyeOff, ImagePlus, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 interface Variant {
@@ -45,6 +45,7 @@ const TONES = [
 const POST_TYPES = [
   { value: "TEXT", label: "Text Post" },
   { value: "LINK", label: "Link Post" },
+  { value: "IMAGE", label: "Image Post" },
 ];
 
 const LENGTHS = [
@@ -58,6 +59,12 @@ const CTA_STYLES = [
   { value: "question", label: "Question" },
   { value: "subscribe", label: "Subscribe / Follow" },
   { value: "comment_bait", label: "Comment Bait" },
+];
+
+const IMAGE_SOURCES = [
+  { value: "generate", label: "Generate with AI" },
+  { value: "upload", label: "Upload Image" },
+  { value: "variation", label: "Variation from Upload" },
 ];
 
 export default function StudioPage() {
@@ -74,6 +81,102 @@ export default function StudioPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [previewIdx, setPreviewIdx] = useState<number | null>(null);
+
+  // Image state
+  const [imageSource, setImageSource] = useState("generate");
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [uploadedFileUrl, setUploadedFileUrl] = useState<string | null>(null);
+  const [generatingImage, setGeneratingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleUploadFile(file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      return data.imageUrl as string;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+      return null;
+    }
+  }
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    toast.info("Uploading image...");
+    const url = await handleUploadFile(file);
+    if (url) {
+      setUploadedFileUrl(url);
+      if (imageSource === "upload") {
+        setImageUrl(url);
+        toast.success("Image uploaded");
+      } else {
+        toast.success("Reference image uploaded");
+      }
+    }
+    // Reset file input so the same file can be re-selected
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function handleGenerateImage() {
+    if (!imagePrompt.trim()) {
+      toast.error("Enter an image prompt");
+      return;
+    }
+
+    setGeneratingImage(true);
+    try {
+      const res = await fetch("/api/images/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "generate", prompt: imagePrompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Image generation failed");
+      setImageUrl(data.imageUrl);
+      toast.success("Image generated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Image generation failed");
+    } finally {
+      setGeneratingImage(false);
+    }
+  }
+
+  async function handleCreateVariation() {
+    if (!uploadedFileUrl) {
+      toast.error("Upload a reference image first");
+      return;
+    }
+
+    setGeneratingImage(true);
+    try {
+      const res = await fetch("/api/images/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "variation", referenceImageUrl: uploadedFileUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Variation generation failed");
+      setImageUrl(data.imageUrl);
+      toast.success("Image variation created");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Variation generation failed");
+    } finally {
+      setGeneratingImage(false);
+    }
+  }
+
+  function clearImage() {
+    setImageUrl(null);
+    setUploadedFileUrl(null);
+    setImagePrompt("");
+  }
 
   async function handleGenerate() {
     setLoading(true);
@@ -108,6 +211,7 @@ export default function StudioPage() {
             hashtags: v.hashtags,
             topic: topic || undefined,
             linkUrl: postType === "LINK" ? linkUrl : undefined,
+            imageUrl: postType === "IMAGE" ? imageUrl : undefined,
           }],
         }),
       });
@@ -136,6 +240,7 @@ export default function StudioPage() {
             hashtags: v.hashtags,
             topic: topic || undefined,
             linkUrl: postType === "LINK" ? linkUrl : undefined,
+            imageUrl: postType === "IMAGE" ? imageUrl : undefined,
           })),
         }),
       });
@@ -194,7 +299,7 @@ export default function StudioPage() {
 
             <div className="space-y-2">
               <Label>Post Type</Label>
-              <Select value={postType} onValueChange={setPostType}>
+              <Select value={postType} onValueChange={(v) => { setPostType(v); if (v !== "IMAGE") clearImage(); }}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {POST_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
@@ -206,6 +311,100 @@ export default function StudioPage() {
               <div className="space-y-2">
                 <Label>Link URL</Label>
                 <Input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://..." />
+              </div>
+            )}
+
+            {postType === "IMAGE" && (
+              <div className="space-y-3 rounded-md border p-3">
+                <div className="space-y-2">
+                  <Label>Image Source</Label>
+                  <Select value={imageSource} onValueChange={(v) => { setImageSource(v); setImageUrl(null); }}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {IMAGE_SOURCES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {imageSource === "generate" && (
+                  <div className="space-y-2">
+                    <Label>Image Prompt</Label>
+                    <Textarea
+                      value={imagePrompt}
+                      onChange={(e) => setImagePrompt(e.target.value)}
+                      placeholder="e.g., A rider on a motorcycle at sunset with Dallas skyline in the background, cinematic lighting..."
+                      rows={3}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={handleGenerateImage}
+                      disabled={generatingImage || !imagePrompt.trim()}
+                    >
+                      {generatingImage
+                        ? <><Loader2 className="h-3 w-3 animate-spin" /> Generating Image...</>
+                        : <><ImagePlus className="h-3 w-3" /> Generate Image</>}
+                    </Button>
+                  </div>
+                )}
+
+                {imageSource === "upload" && (
+                  <div className="space-y-2">
+                    <Label>Upload Image</Label>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/gif,image/webp"
+                      onChange={handleFileSelect}
+                      className="block w-full text-sm file:mr-3 file:rounded file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer"
+                    />
+                  </div>
+                )}
+
+                {imageSource === "variation" && (
+                  <div className="space-y-2">
+                    <Label>Upload Reference Image</Label>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/gif,image/webp"
+                      onChange={handleFileSelect}
+                      className="block w-full text-sm file:mr-3 file:rounded file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground hover:file:bg-primary/90 cursor-pointer"
+                    />
+                    {uploadedFileUrl && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full"
+                        onClick={handleCreateVariation}
+                        disabled={generatingImage}
+                      >
+                        {generatingImage
+                          ? <><Loader2 className="h-3 w-3 animate-spin" /> Creating Variation...</>
+                          : <><ImagePlus className="h-3 w-3" /> Create Variation</>}
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {imageUrl && (
+                  <div className="relative">
+                    <img
+                      src={imageUrl}
+                      alt="Post image"
+                      className="w-full rounded-md border object-cover max-h-48"
+                    />
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="absolute top-1 right-1 h-6 w-6 p-0"
+                      onClick={clearImage}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -259,6 +458,9 @@ export default function StudioPage() {
             <Card key={i} className={v.saved ? "border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20" : ""}>
               <CardContent className="pt-6 space-y-3">
                 {v.hook && <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Hook: {v.hook}</p>}
+                {postType === "IMAGE" && imageUrl && (
+                  <img src={imageUrl} alt="Post image" className="w-full rounded-md border object-cover max-h-64" />
+                )}
                 <p className="whitespace-pre-wrap text-sm">{v.caption}</p>
                 <div className="flex flex-wrap gap-1">
                   {v.hashtags.map((h, j) => (
@@ -289,6 +491,7 @@ export default function StudioPage() {
                       caption={v.caption}
                       hashtags={v.hashtags}
                       linkUrl={postType === "LINK" ? linkUrl : null}
+                      imageUrl={postType === "IMAGE" ? imageUrl : null}
                     />
                   </div>
                 )}

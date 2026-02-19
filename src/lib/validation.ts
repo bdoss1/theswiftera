@@ -28,6 +28,7 @@ export const ContentItemCreateSchema = z.object({
   hashtags: z.array(z.string()).optional().default([]),
   topic: z.string().optional(),
   linkUrl: z.string().url().optional().or(z.literal("")),
+  imageUrl: z.string().optional(),
 });
 
 export const ContentCreateSchema = z.object({

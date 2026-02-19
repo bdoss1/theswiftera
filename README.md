@@ -18,7 +18,7 @@ Built with Next.js 15, TypeScript, TailwindCSS, Prisma ORM, and a local Postgres
 - [Database](#database)
 - [Authentication](#authentication)
 - [Content Safety](#content-safety)
-- [Image Upload](#image-upload)
+- [Image Support](#image-support)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Dark Mode](#dark-mode)
 - [Export & Import](#export--import)
@@ -115,7 +115,8 @@ The worker polls the database every 30 seconds for scheduled publish jobs and po
 |---|---|---|---|
 | `DATABASE_URL` | Yes | `postgresql://swifttok:swifttok@localhost:5432/swifttok` | Postgres connection string |
 | `OPENAI_API_KEY` | Yes | — | Your OpenAI API key for content generation |
-| `OPENAI_MODEL` | No | `gpt-4o-mini` | OpenAI model to use |
+| `OPENAI_MODEL` | No | `gpt-4o-mini` | OpenAI model for text generation |
+| `OPENAI_IMAGE_MODEL` | No | `dall-e-3` | OpenAI model for image generation |
 | `OPENAI_MAX_RETRIES` | No | `3` | Number of retries for OpenAI API calls |
 | `OPENAI_TEMPERATURE` | No | `0.85` | Generation temperature |
 | `FACEBOOK_PAGE_ID` | No | — | Facebook Page ID |
@@ -171,6 +172,7 @@ theswiftera/
 │   │       ├── calendar/        # Auto-build scheduling
 │   │       ├── facebook/        # Facebook configuration
 │   │       ├── hashtags/        # AI-powered hashtag generation
+│   │       ├── images/          # AI image generation & variations
 │   │       ├── upload/          # Image upload
 │   │       ├── templates/       # Prompt template CRUD
 │   │       ├── settings/        # App settings
@@ -220,12 +222,16 @@ The AI-powered content creation workspace:
 1. Select a **pillar** (Brotherhood, Leadership, Humor, Entrepreneurship, Family)
 2. Select a **tone** (Leader, Funny, Reflective, Builder, Clubhouse)
 3. Choose a **platform** (Facebook, Instagram, X)
-4. Optionally enter a **topic** for focused generation
-5. Click **Generate** to create content variants using OpenAI (with automatic retry on failure)
-6. Preview each variant with the **Facebook Preview** to see how it will look when posted
-7. Save variants as drafts or approve them directly
-8. **AI Hashtag Suggestions** — Auto-generate relevant hashtags for your content
-9. **Image Upload** — Attach images to posts for richer content
+4. Choose a **post type** — Text, Link, or **Image**
+5. Optionally enter a **topic** for focused generation
+6. Click **Generate** to create content variants using OpenAI (with automatic retry on failure)
+7. Preview each variant with the **Facebook Preview** to see how it will look when posted
+8. Save variants as drafts or approve them directly
+9. **AI Hashtag Suggestions** — Auto-generate relevant hashtags for your content
+10. **Image Posts** — When Image post type is selected, choose from three image sources:
+    - **Generate with AI** — Enter a text prompt to generate an image via DALL-E 3
+    - **Upload Image** — Upload your own image (JPEG, PNG, GIF, WebP)
+    - **Variation from Upload** — Upload a reference image and generate an AI variation via DALL-E 2
 
 ### Review (`/review`)
 
@@ -296,6 +302,7 @@ All mutation endpoints are protected by:
 | `PATCH/DELETE` | `/api/templates/[id]` | Update/Delete a template |
 | `GET/POST` | `/api/rate-limit` | Rate limit tracking |
 | `POST` | `/api/hashtags` | AI hashtag generation |
+| `POST` | `/api/images/generate` | AI image generation & variations |
 | `POST` | `/api/upload` | Image upload |
 | `GET/POST` | `/api/auth/[...nextauth]` | NextAuth.js endpoints |
 
@@ -346,14 +353,61 @@ SwiftTok includes multiple layers of content safety:
 
 ---
 
-## Image Upload
+## Image Support
 
-Upload images for your posts via the `/api/upload` endpoint:
+SwiftTok supports three ways to add images to posts:
+
+### Generate with AI
+
+Use DALL-E 3 to generate images from a text prompt directly in the Studio:
+
+1. Set post type to **Image Post**
+2. Select **Generate with AI** as the image source
+3. Enter a descriptive prompt (e.g., "A rider on a motorcycle at sunset with Dallas skyline, cinematic lighting")
+4. Click **Generate Image** — the AI-generated image appears in the preview
+5. Generate text captions as usual — each variant card includes the image
+
+The image model is configurable via the `OPENAI_IMAGE_MODEL` environment variable (defaults to `dall-e-3`).
+
+### Upload Image
+
+Upload your own images via the Studio or the `/api/upload` endpoint:
 
 - Supports JPEG, PNG, GIF, and WebP formats
-- Configurable max file size (default: 10MB)
+- Configurable max file size (default: 10MB via `UPLOAD_MAX_FILE_SIZE_MB`)
 - Images are stored in `public/uploads/`
-- Returns a URL path that can be attached to content items
+- Returns a URL path that is attached to content items when saved
+
+### Variation from Upload
+
+Generate AI variations of an existing image using DALL-E 2:
+
+1. Set post type to **Image Post**
+2. Select **Variation from Upload** as the image source
+3. Upload a reference image
+4. Click **Create Variation** — DALL-E 2 generates a new image inspired by the reference
+5. The variation replaces the reference as the post image
+
+### Image Generation API
+
+`POST /api/images/generate` accepts:
+
+```json
+{
+  "mode": "generate",
+  "prompt": "A motorcycle parked outside a barbershop, golden hour",
+  "size": "1024x1024"
+}
+```
+
+Or for variations:
+
+```json
+{
+  "mode": "variation",
+  "referenceImageUrl": "/uploads/1234567890-abc123.png"
+}
+```
 
 ---
 
@@ -544,7 +598,7 @@ pm2 start npx --name "swifttok-worker" -- tsx src/worker.ts
 | UI Components | Radix UI primitives + CVA (shadcn/ui pattern) |
 | Database | PostgreSQL 16 (Docker) |
 | ORM | Prisma v6 |
-| AI | OpenAI API (GPT-4o-mini default) |
+| AI | OpenAI API (GPT-4o-mini for text, DALL-E 3 for images) |
 | Auth | NextAuth.js (optional) |
 | Validation | Zod |
 | Logging | Pino |

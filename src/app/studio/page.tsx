@@ -22,8 +22,8 @@ interface Variant {
 
 const PLATFORMS = [
   { value: "FACEBOOK", label: "Facebook" },
-  { value: "INSTAGRAM", label: "Instagram (coming soon)" },
-  { value: "X", label: "X / Twitter (coming soon)" },
+  { value: "INSTAGRAM", label: "Instagram" },
+  { value: "X", label: "X / Twitter" },
 ];
 
 const PILLARS = [
@@ -76,9 +76,6 @@ export default function StudioPage() {
   const [previewIdx, setPreviewIdx] = useState<number | null>(null);
 
   async function handleGenerate() {
-    if (platform !== "FACEBOOK") {
-      toast.info(`${platform} publishing is coming soon. Generating Facebook-style content for now.`);
-    }
     setLoading(true);
     try {
       const res = await fetch("/api/generate", {

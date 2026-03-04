@@ -1,6 +1,6 @@
 # SwiftTok — The Swift Era Content Engine
 
-A **local-first** personal MCP command center for **Swift the Great / The Swift Era** brand. SwiftTok generates social media content using OpenAI, manages approval workflows, and publishes to Facebook, Instagram, and X (Twitter) via their respective APIs.
+A **local-first** personal command center for the **Swift the Great / The Swift Era** brand. SwiftTok generates social media content using AI (OpenAI or Google Gemini), manages approval workflows, and publishes to Facebook, Instagram, and X (Twitter) via their respective APIs.
 
 Built with Next.js 15, TypeScript, TailwindCSS, Prisma ORM, and a local Postgres database.
 
@@ -11,6 +11,7 @@ Built with Next.js 15, TypeScript, TailwindCSS, Prisma ORM, and a local Postgres
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Environment Variables](#environment-variables)
+- [AI Provider](#ai-provider)
 - [Project Structure](#project-structure)
 - [Pages & Features](#pages--features)
 - [API Routes](#api-routes)
@@ -35,7 +36,7 @@ Built with Next.js 15, TypeScript, TailwindCSS, Prisma ORM, and a local Postgres
 - **Node.js** 18+
 - **pnpm** (recommended) — `npm install -g pnpm`
 - **Docker** & **Docker Compose** (for local Postgres)
-- **OpenAI API key** — for content generation
+- **AI API key** — OpenAI *or* Google Gemini (see [AI Provider](#ai-provider))
 - **Facebook Page Access Token** (optional) — for publishing to Facebook
 - **Instagram Business Account** (optional) — for publishing to Instagram
 - **X/Twitter API credentials** (optional) — for publishing to X
@@ -111,13 +112,49 @@ The worker polls the database every 30 seconds for scheduled publish jobs and po
 
 ## Environment Variables
 
+### Core
+
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `DATABASE_URL` | Yes | `postgresql://swifttok:swifttok@localhost:5432/swifttok` | Postgres connection string |
-| `OPENAI_API_KEY` | Yes | — | Your OpenAI API key for content generation |
-| `OPENAI_MODEL` | No | `gpt-4o-mini` | OpenAI model to use |
-| `OPENAI_MAX_RETRIES` | No | `3` | Number of retries for OpenAI API calls |
-| `OPENAI_TEMPERATURE` | No | `0.85` | Generation temperature |
+| `LOG_LEVEL` | No | `info` | Logging level (`debug`, `info`, `warn`, `error`) |
+
+### AI Provider
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `AI_PROVIDER` | No | `openai` | AI backend to use: `openai` or `gemini` |
+
+### OpenAI (when `AI_PROVIDER=openai`)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `OPENAI_API_KEY` | Yes* | — | Your OpenAI API key |
+| `OPENAI_MODEL` | No | `gpt-4o-mini` | Model to use for text generation |
+| `OPENAI_MAX_RETRIES` | No | `3` | Number of retries on API failure |
+| `OPENAI_RETRY_DELAY_MS` | No | `1000` | Base delay between retries (ms) |
+| `OPENAI_TEMPERATURE` | No | `0.85` | Generation temperature (0–2) |
+| `OPENAI_MAX_TOKENS` | No | `4000` | Max tokens per generation request |
+
+*Required only when `AI_PROVIDER=openai`
+
+### Google Gemini (when `AI_PROVIDER=gemini`)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `GEMINI_API_KEY` | Yes* | — | Your Google AI Studio API key |
+| `GEMINI_MODEL` | No | `gemini-1.5-flash` | Gemini model to use |
+| `GEMINI_MAX_RETRIES` | No | `3` | Number of retries on API failure |
+| `GEMINI_RETRY_DELAY_MS` | No | `1000` | Base delay between retries (ms) |
+| `GEMINI_TEMPERATURE` | No | `0.85` | Generation temperature (0–2) |
+| `GEMINI_MAX_TOKENS` | No | `4000` | Max output tokens per request |
+
+*Required only when `AI_PROVIDER=gemini`
+
+### Social Media
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
 | `FACEBOOK_PAGE_ID` | No | — | Facebook Page ID |
 | `FACEBOOK_PAGE_ACCESS_TOKEN` | No | — | Facebook Page access token |
 | `INSTAGRAM_ACCOUNT_ID` | No | — | Instagram Business Account ID |
@@ -126,17 +163,78 @@ The worker polls the database every 30 seconds for scheduled publish jobs and po
 | `X_API_SECRET` | No | — | X/Twitter API secret |
 | `X_ACCESS_TOKEN` | No | — | X/Twitter access token |
 | `X_ACCESS_SECRET` | No | — | X/Twitter access secret |
+
+### Worker
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
 | `WORKER_POLL_INTERVAL_MS` | No | `30000` | Worker polling interval (ms) |
 | `WORKER_MAX_ATTEMPTS` | No | `3` | Max publish retry attempts |
-| `WORKER_BACKOFF_MINUTES` | No | `1,5,15` | Retry backoff schedule (minutes) |
-| `API_RATE_LIMIT_PER_MINUTE` | No | `60` | API endpoint rate limit |
-| `AUTH_ENABLED` | No | `false` | Enable authentication |
+| `WORKER_BACKOFF_MINUTES` | No | `1,5,15` | Retry backoff schedule (comma-separated minutes) |
+| `WORKER_BATCH_SIZE` | No | `10` | Jobs processed per poll cycle |
+
+### Rate Limiting
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `API_RATE_LIMIT_PER_MINUTE` | No | `60` | Per-IP requests per minute on API endpoints |
+| `RATE_LIMIT_WINDOW_MINUTES` | No | `60` | Sliding window size (minutes) |
+| `RATE_LIMIT_PER_WINDOW` | No | `200` | Max requests per window |
+
+### Authentication
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `AUTH_ENABLED` | No | `false` | Enable login-required access |
 | `NEXTAUTH_SECRET` | No | — | NextAuth.js secret (required if auth enabled) |
 | `ADMIN_USERNAME` | No | `admin` | Admin login username |
 | `ADMIN_PASSWORD` | No | — | Admin login password (required if auth enabled) |
-| `LOG_LEVEL` | No | `info` | Logging level (debug, info, warn, error) |
 
 See `.env.example` for the complete list with defaults.
+
+---
+
+## AI Provider
+
+SwiftTok supports two AI backends for content generation and hashtag suggestions. Switch between them with the `AI_PROVIDER` environment variable — no code changes required.
+
+### OpenAI (default)
+
+Uses GPT-4o-mini (or any model you configure) for text generation and DALL-E 3 for image generation.
+
+```env
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+```
+
+Get your API key at [platform.openai.com](https://platform.openai.com).
+
+### Google Gemini
+
+Uses Gemini 1.5 Flash (or any Gemini model) for text generation.
+
+```env
+AI_PROVIDER=gemini
+GEMINI_API_KEY=AIza...
+GEMINI_MODEL=gemini-1.5-flash
+```
+
+Get your API key at [aistudio.google.com](https://aistudio.google.com).
+
+**Available Gemini models:**
+
+| Model | Description |
+|---|---|
+| `gemini-1.5-flash` | Fast and efficient (default) |
+| `gemini-1.5-pro` | More capable, higher quality |
+| `gemini-2.0-flash` | Latest generation, fast |
+| `gemini-2.0-pro` | Latest generation, high quality |
+
+**Notes:**
+- Both providers share the same content pipeline: blocked-word filtering and Strict Mode moderation apply regardless of which provider is active.
+- Image generation (DALL-E) is only available with OpenAI. If using Gemini, image uploads still work but AI image generation is disabled.
+- All retry logic, temperature, and token settings are configurable independently per provider.
 
 ---
 
@@ -166,7 +264,7 @@ theswiftera/
 │   │   ├── globals.css          # TailwindCSS + dark mode variables
 │   │   └── api/                 # API routes
 │   │       ├── auth/            # NextAuth.js auth endpoints
-│   │       ├── generate/        # Content generation via OpenAI
+│   │       ├── generate/        # Content generation (OpenAI or Gemini)
 │   │       ├── content/         # Content CRUD + bulk/import/export/autosave
 │   │       ├── calendar/        # Auto-build scheduling
 │   │       ├── facebook/        # Facebook configuration
@@ -183,10 +281,16 @@ theswiftera/
 │   │   ├── theme-toggle.tsx     # Dark mode toggle button
 │   │   └── ui/                  # Reusable UI components
 │   ├── lib/
-│   │   ├── ai/                  # OpenAI integration, retry, & moderation
-│   │   ├── facebook/            # Facebook Graph API client
-│   │   ├── instagram/           # Instagram Graph API publishing
-│   │   ├── x/                   # X/Twitter API publishing
+│   │   ├── ai/
+│   │   │   ├── openai.ts        # OpenAI implementation (generateVariants, generateHashtags, generateImage)
+│   │   │   ├── gemini.ts        # Google Gemini implementation (generateVariants, generateHashtags)
+│   │   │   ├── provider.ts      # Provider abstraction — routes to OpenAI or Gemini via AI_PROVIDER
+│   │   │   ├── moderation.ts    # OpenAI Moderation API (Strict Mode)
+│   │   │   ├── prompts.ts       # Brand system prompts, pillar/tone context, CTA styles
+│   │   │   └── retry.ts         # Exponential backoff retry helper
+│   │   ├── facebook/            # Facebook Graph API client & publisher
+│   │   ├── instagram/           # Instagram Graph API publisher
+│   │   ├── x/                   # X/Twitter OAuth 1.0a publisher
 │   │   ├── auth.ts              # NextAuth.js configuration
 │   │   ├── config.ts            # Centralized configuration module
 │   │   ├── logger.ts            # Structured logging (Pino)
@@ -221,11 +325,12 @@ The AI-powered content creation workspace:
 2. Select a **tone** (Leader, Funny, Reflective, Builder, Clubhouse)
 3. Choose a **platform** (Facebook, Instagram, X)
 4. Optionally enter a **topic** for focused generation
-5. Click **Generate** to create content variants using OpenAI (with automatic retry on failure)
+5. Click **Generate** to create content variants using your configured AI provider (with automatic retry on failure)
 6. Preview each variant with the **Facebook Preview** to see how it will look when posted
 7. Save variants as drafts or approve them directly
-8. **AI Hashtag Suggestions** — Auto-generate relevant hashtags for your content
+8. **AI Hashtag Suggestions** — Auto-generate relevant hashtags for any variant
 9. **Image Upload** — Attach images to posts for richer content
+10. **AI Image Generation** — Generate promotional images via DALL-E 3 (OpenAI only)
 
 ### Review (`/review`)
 
@@ -263,7 +368,7 @@ Configuration hub with multiple sections:
 - **Daily Post Target** — Set how many posts per day to aim for
 - **Strict Mode & Blocked Words** — Content safety controls (with OpenAI Moderation API)
 - **Facebook Page** — Connect your Facebook Page with Page ID and access token
-- **Prompt Templates** — Full CRUD editor to create, edit, and delete prompt templates
+- **Prompt Templates** — Full CRUD editor to create, edit, and delete prompt templates per pillar/tone combination
 - **API Rate Limits** — Visual display of API usage with color-coded progress bars
 - **Import Content** — Upload a JSON file to bulk-import content items as drafts
 
@@ -279,7 +384,7 @@ All mutation endpoints are protected by:
 | Method | Route | Description |
 |---|---|---|
 | `GET` | `/api/stats` | Dashboard statistics |
-| `POST` | `/api/generate` | Generate content via OpenAI |
+| `POST` | `/api/generate` | Generate content variants (routes to OpenAI or Gemini) |
 | `GET` | `/api/content` | List content items |
 | `POST` | `/api/content` | Create content items |
 | `PATCH` | `/api/content/[id]` | Update a content item |
@@ -290,12 +395,12 @@ All mutation endpoints are protected by:
 | `GET` | `/api/content/export` | Export as JSON or CSV |
 | `POST` | `/api/content/import` | Import from JSON |
 | `GET/PATCH` | `/api/settings` | Get/Update app settings |
-| `GET/POST/PUT` | `/api/facebook` | Facebook page config & test |
-| `POST` | `/api/calendar/auto-build` | Auto-schedule content |
+| `GET/POST/PUT` | `/api/facebook` | Facebook page config & connection test |
+| `POST` | `/api/calendar/auto-build` | Auto-schedule approved content |
 | `GET/POST` | `/api/templates` | List/Create prompt templates |
 | `PATCH/DELETE` | `/api/templates/[id]` | Update/Delete a template |
 | `GET/POST` | `/api/rate-limit` | Rate limit tracking |
-| `POST` | `/api/hashtags` | AI hashtag generation |
+| `POST` | `/api/hashtags` | AI hashtag generation (routes to OpenAI or Gemini) |
 | `POST` | `/api/upload` | Image upload |
 | `GET/POST` | `/api/auth/[...nextauth]` | NextAuth.js endpoints |
 
@@ -311,8 +416,8 @@ pnpm worker
 
 **How it works:**
 
-1. Polls the database every 30 seconds (configurable)
-2. Finds scheduled jobs with `runAt <= now`
+1. Polls the database every 30 seconds (configurable via `WORKER_POLL_INTERVAL_MS`)
+2. Finds scheduled jobs with `runAt <= now` in batches (configurable via `WORKER_BATCH_SIZE`)
 3. Routes to the correct platform publisher (Facebook, Instagram, or X)
 4. Tracks API call counts for rate limiting awareness
 5. On success: marks content as `POSTED`
@@ -323,12 +428,45 @@ All configuration is via environment variables — see `.env.example`.
 
 ---
 
+## Database
+
+### Schema
+
+Defined in `prisma/schema.prisma` with 7 models and 6 enums:
+
+**Models:**
+- `Setting` — App-wide settings (approval mode, auto-post, strict mode, blocked words, daily target)
+- `FacebookPage` — Stored Facebook page credentials
+- `PromptTemplate` — Custom generation prompts per pillar/tone combination
+- `ContentItem` — Social media posts with full status tracking
+- `PublishJob` — Scheduled publishing jobs with retry state
+- `RateLimit` — Per-platform API call tracking
+
+**Status lifecycle for content:**
+```
+DRAFT → READY_FOR_REVIEW → APPROVED → SCHEDULED → POSTED
+                                              ↘ FAILED
+```
+
+### Useful Commands
+
+| Command | Description |
+|---|---|
+| `pnpm db:up` | Start the Postgres container |
+| `pnpm db:down` | Stop the Postgres container |
+| `pnpm prisma:migrate` | Run pending migrations |
+| `pnpm prisma:generate` | Regenerate the Prisma client |
+| `pnpm prisma:seed` | Seed default templates and settings |
+| `pnpm prisma:studio` | Open Prisma Studio (visual DB browser) |
+
+---
+
 ## Authentication
 
 Authentication is **optional** and disabled by default. To enable:
 
 1. Set `AUTH_ENABLED=true` in `.env`
-2. Set `NEXTAUTH_SECRET` to a random string
+2. Set `NEXTAUTH_SECRET` to a random string (`openssl rand -base64 32`)
 3. Set `ADMIN_PASSWORD` to your desired password
 4. Optionally change `ADMIN_USERNAME` (default: `admin`)
 
@@ -338,22 +476,26 @@ When enabled, all pages require login. API routes and the login page are exclude
 
 ## Content Safety
 
-SwiftTok includes multiple layers of content safety:
+SwiftTok includes multiple layers of content safety that apply regardless of which AI provider is active:
 
-1. **Blocked Words** — Simple substring filter configured in Settings
-2. **OpenAI Moderation API** — When **Strict Mode** is enabled, all generated content is checked against OpenAI's moderation endpoint. Flagged content is automatically filtered out.
-3. **Zod Validation** — All API inputs are strictly validated to prevent malformed data
+1. **Blocked Words** — A comma-separated list configured in Settings. Any generated variant containing a blocked word is automatically removed before returning results.
+2. **OpenAI Moderation API** — When **Strict Mode** is enabled in Settings, all generated variants are checked against OpenAI's moderation endpoint. Flagged content is filtered out. This check applies even when Gemini is used for generation.
+3. **Zod Validation** — All API inputs are strictly validated to prevent malformed data from reaching the database.
 
 ---
 
 ## Image Upload
 
-Upload images for your posts via the `/api/upload` endpoint:
+Upload images for your posts via the Studio or the `/api/upload` endpoint:
 
 - Supports JPEG, PNG, GIF, and WebP formats
-- Configurable max file size (default: 10MB)
+- Configurable max file size via `UPLOAD_MAX_FILE_SIZE_MB` (default: 10MB)
 - Images are stored in `public/uploads/`
-- Returns a URL path that can be attached to content items
+- Returns a URL path that can be attached to any content item
+
+**AI Image Generation** (OpenAI only):
+
+When `AI_PROVIDER=openai`, the Studio also supports generating images via DALL-E 3 and creating variations of uploaded images via DALL-E 2.
 
 ---
 
@@ -406,7 +548,14 @@ From the **Settings** page, upload a JSON file:
 ]
 ```
 
-Items are imported as `DRAFT` status for review.
+Valid values:
+- `pillar`: `BROTHERHOOD`, `LEADERSHIP`, `HUMOR`, `ENTREPRENEURSHIP`, `FAMILY`
+- `tone`: `LEADER`, `FUNNY`, `REFLECTIVE`, `BUILDER`, `CLUBHOUSE`
+- `platform` (optional): `FACEBOOK`, `INSTAGRAM`, `X`
+- `postType` (optional): `TEXT`, `LINK`, `IMAGE`
+- `status` (optional): imported items default to `DRAFT`
+
+Items are imported as `DRAFT` status for review before any publishing.
 
 ---
 
@@ -462,19 +611,6 @@ Creates a timestamped, gzipped SQL dump in `./backups/`. Automatically removes b
 pnpm db:restore backups/swifttok_20260218_120000.sql.gz
 ```
 
-### Available Commands
-
-| Command | Description |
-|---|---|
-| `pnpm db:up` | Start the Postgres container |
-| `pnpm db:down` | Stop the Postgres container |
-| `pnpm db:backup` | Create a database backup |
-| `pnpm db:restore` | Restore from a backup |
-| `pnpm prisma:migrate` | Run database migrations |
-| `pnpm prisma:generate` | Regenerate the Prisma client |
-| `pnpm prisma:seed` | Seed default templates and settings |
-| `pnpm prisma:studio` | Open Prisma Studio (visual DB browser) |
-
 ---
 
 ## Deployment
@@ -485,7 +621,8 @@ pnpm db:restore backups/swifttok_20260218_120000.sql.gz
 2. Import the project on [Vercel](https://vercel.com)
 3. Set environment variables in the Vercel dashboard:
    - `DATABASE_URL` — Use a managed Postgres (e.g., Neon, Supabase, Railway)
-   - `OPENAI_API_KEY`
+   - `AI_PROVIDER` — `openai` or `gemini`
+   - `OPENAI_API_KEY` or `GEMINI_API_KEY` (depending on provider)
    - `NEXTAUTH_SECRET` (if auth enabled)
    - All other required variables from `.env.example`
 4. Vercel will auto-detect Next.js and configure the build
@@ -524,10 +661,11 @@ pm2 start npx --name "swifttok-worker" -- tsx src/worker.ts
 
 - [ ] Set `NODE_ENV=production`
 - [ ] Use a managed PostgreSQL database with SSL
+- [ ] Set `AI_PROVIDER` and the corresponding API key (`OPENAI_API_KEY` or `GEMINI_API_KEY`)
 - [ ] Set a strong `NEXTAUTH_SECRET`
 - [ ] Enable `AUTH_ENABLED=true` if publicly accessible
 - [ ] Set `ADMIN_PASSWORD` to a strong password
-- [ ] Configure social media API credentials
+- [ ] Configure social media API credentials (Facebook, Instagram, X)
 - [ ] Set up automated database backups
 - [ ] Set `LOG_LEVEL=info` or `warn`
 - [ ] Configure a reverse proxy (nginx/Caddy) with SSL
@@ -544,7 +682,8 @@ pm2 start npx --name "swifttok-worker" -- tsx src/worker.ts
 | UI Components | Radix UI primitives + CVA (shadcn/ui pattern) |
 | Database | PostgreSQL 16 (Docker) |
 | ORM | Prisma v6 |
-| AI | OpenAI API (GPT-4o-mini default) |
+| AI (text) | OpenAI API (GPT-4o-mini) or Google Gemini (gemini-1.5-flash) |
+| AI (images) | OpenAI DALL-E 3 / DALL-E 2 |
 | Auth | NextAuth.js (optional) |
 | Validation | Zod |
 | Logging | Pino |

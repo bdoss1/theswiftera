@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -76,6 +76,17 @@ export default function StudioPage() {
   const [ctaStyle, setCtaStyle] = useState("question");
   const [topic, setTopic] = useState("");
   const [variantCount, setVariantCount] = useState(5);
+
+  // Pre-fill from URL params (e.g. when navigating from /trends "Open in Studio")
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlTopic = params.get("topic");
+    const urlPillar = params.get("pillar");
+    const urlTone = params.get("tone");
+    if (urlTopic) setTopic(urlTopic);
+    if (urlPillar && PILLARS.some((p) => p.value === urlPillar)) setPillar(urlPillar);
+    if (urlTone && TONES.some((t) => t.value === urlTone)) setTone(urlTone);
+  }, []);
   const [linkUrl, setLinkUrl] = useState("");
   const [variants, setVariants] = useState<Variant[]>([]);
   const [loading, setLoading] = useState(false);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,9 +23,33 @@ import {
   Camera,
   Save,
   ExternalLink,
+  Video,
+  Volume2,
+  AlertCircle,
+  Play,
+  CheckCircle2,
+  XCircle,
+  Info,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { ReelScript, ReelScene } from "@/lib/ai/reels";
+
+// ---------------------------------------------------------------------------
+// Video production types
+// ---------------------------------------------------------------------------
+
+type AudioStatus = "idle" | "generating" | "done" | "error";
+type ClipStatus = "idle" | "queued" | "dreaming" | "done" | "error";
+
+interface SceneVideoState {
+  audioStatus: AudioStatus;
+  audioUrl?: string;
+  audioError?: string;
+  clipStatus: ClipStatus;
+  generationId?: string;
+  clipUrl?: string;
+  clipError?: string;
+}
 
 const PLATFORMS = [
   { value: "INSTAGRAM", label: "Instagram Reels" },
@@ -134,6 +158,177 @@ function SceneCard({ scene, index }: { scene: ReelScene; index: number }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Video Production Panel
+// ---------------------------------------------------------------------------
+
+const STATUS_ICON: Record<ClipStatus | AudioStatus, React.ReactNode> = {
+  idle: <span className="h-4 w-4 rounded-full border-2 border-muted-foreground/30 inline-block" />,
+  generating: <Loader2 className="h-4 w-4 animate-spin text-primary" />,
+  queued: <Loader2 className="h-4 w-4 animate-spin text-amber-500" />,
+  dreaming: <Loader2 className="h-4 w-4 animate-spin text-blue-500" />,
+  done: <CheckCircle2 className="h-4 w-4 text-green-600" />,
+  error: <XCircle className="h-4 w-4 text-destructive" />,
+};
+
+function VideoProductionPanel({
+  script,
+  sceneStates,
+  onGenerateAll,
+  generating,
+}: {
+  script: ReelScript;
+  sceneStates: SceneVideoState[];
+  onGenerateAll: () => void;
+  generating: boolean;
+}) {
+  const lumaConfigured = true; // checked server-side; API errors will surface per-clip
+  const anyDone = sceneStates.some((s) => s.clipStatus === "done" || s.audioStatus === "done");
+  const allDone = sceneStates.length > 0 &&
+    sceneStates.every((s) => (s.clipStatus === "done" || s.clipStatus === "error") &&
+      (s.audioStatus === "done" || s.audioStatus === "error" || !script.scenes[sceneStates.indexOf(s)]?.voiceover));
+
+  return (
+    <div className="space-y-4 pt-2 border-t">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="text-sm font-semibold flex items-center gap-2">
+            <Video className="h-4 w-4 text-primary" />
+            Video Production
+          </h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Generate a 5–7 second clip per scene via Luma AI + voiceovers via ElevenLabs.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          onClick={onGenerateAll}
+          disabled={generating || allDone}
+        >
+          {generating
+            ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating...</>
+            : anyDone
+            ? <><Play className="h-3.5 w-3.5" /> Regenerate Clips</>
+            : <><Video className="h-3.5 w-3.5" /> Generate All Clips</>}
+        </Button>
+      </div>
+
+      {/* Required env vars notice */}
+      <div className="rounded-md border border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800 p-3 flex items-start gap-2">
+        <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+        <p className="text-xs text-blue-700 dark:text-blue-300">
+          Requires <code className="bg-blue-100 dark:bg-blue-900/50 px-1 rounded">LUMA_API_KEY</code> and{" "}
+          <code className="bg-blue-100 dark:bg-blue-900/50 px-1 rounded">ELEVENLABS_API_KEY</code> in your{" "}
+          <code className="bg-blue-100 dark:bg-blue-900/50 px-1 rounded">.env</code>.
+          Clips are ~5–7 seconds each — use CapCut, VEED.io, or DaVinci Resolve to stitch them.
+        </p>
+      </div>
+
+      {/* Per-scene video cards */}
+      <div className="space-y-3">
+        {script.scenes.map((scene, i) => {
+          const state = sceneStates[i] ?? {
+            clipStatus: "idle", audioStatus: "idle",
+          };
+
+          return (
+            <div key={i} className="rounded-lg border bg-card overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center gap-2 border-b bg-muted/40 px-4 py-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground shrink-0">
+                  {i + 1}
+                </span>
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Clock className="h-3 w-3" />{scene.timestamp}
+                </span>
+                <span className="text-xs text-muted-foreground truncate max-w-[200px] ml-1">
+                  {scene.visual.slice(0, 60)}{scene.visual.length > 60 ? "…" : ""}
+                </span>
+              </div>
+
+              <div className="p-4 grid gap-4 sm:grid-cols-2">
+                {/* Video clip */}
+                <div className="space-y-2">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    {STATUS_ICON[state.clipStatus]}
+                    <Camera className="h-3 w-3 ml-0.5" /> Clip
+                    <span className="normal-case font-normal capitalize ml-auto">
+                      {state.clipStatus === "idle" ? "not started" : state.clipStatus}
+                    </span>
+                  </p>
+                  {state.clipStatus === "done" && state.clipUrl ? (
+                    <video
+                      src={state.clipUrl}
+                      controls
+                      playsInline
+                      className="w-full rounded-md border aspect-[9/16] max-h-48 object-cover bg-black"
+                    />
+                  ) : state.clipError ? (
+                    <p className="text-xs text-destructive flex items-start gap-1">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      {state.clipError}
+                    </p>
+                  ) : state.clipStatus !== "idle" ? (
+                    <div className="flex items-center justify-center rounded-md border bg-muted aspect-[9/16] max-h-48">
+                      <div className="text-center space-y-1">
+                        <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" />
+                        <p className="text-xs text-muted-foreground capitalize">{state.clipStatus}…</p>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Audio voiceover */}
+                <div className="space-y-2">
+                  <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    {STATUS_ICON[state.audioStatus]}
+                    <Volume2 className="h-3 w-3 ml-0.5" /> Voiceover
+                    <span className="normal-case font-normal capitalize ml-auto">
+                      {!scene.voiceover ? "no text" : state.audioStatus === "idle" ? "not started" : state.audioStatus}
+                    </span>
+                  </p>
+                  {!scene.voiceover ? (
+                    <p className="text-xs text-muted-foreground">No voiceover for this scene.</p>
+                  ) : state.audioStatus === "done" && state.audioUrl ? (
+                    <audio src={state.audioUrl} controls className="w-full" />
+                  ) : state.audioError ? (
+                    <p className="text-xs text-destructive flex items-start gap-1">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      {state.audioError}
+                    </p>
+                  ) : state.audioStatus === "generating" ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating voiceover…
+                    </div>
+                  ) : null}
+
+                  {/* Voiceover text preview */}
+                  {scene.voiceover && (
+                    <p className="text-xs italic text-muted-foreground border-l-2 pl-2">
+                      &ldquo;{scene.voiceover}&rdquo;
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {allDone && (
+        <div className="rounded-md border border-green-200 bg-green-50 dark:bg-green-900/20 dark:border-green-800 p-3 flex items-start gap-2">
+          <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-green-700 dark:text-green-300">
+            All clips and voiceovers generated. Download each clip and stitch them together using{" "}
+            <strong>CapCut</strong>, <strong>VEED.io</strong>, or <strong>DaVinci Resolve</strong>.
+            Add your music ({script.musicMood}) as a background track.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function buildFullScript(script: ReelScript): string {
   const lines: string[] = [
     `REEL SCRIPT: ${script.title}`,
@@ -175,9 +370,137 @@ export default function ReelsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // Video production state
+  const [sceneStates, setSceneStates] = useState<SceneVideoState[]>([]);
+  const [videoGenerating, setVideoGenerating] = useState(false);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Update a single scene's state immutably
+  const updateScene = useCallback((index: number, patch: Partial<SceneVideoState>) => {
+    setSceneStates((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...patch };
+      return next;
+    });
+  }, []);
+
+  // Poll Luma until all pending clips are done/failed
+  useEffect(() => {
+    function startPolling() {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+
+      pollIntervalRef.current = setInterval(async () => {
+        setSceneStates((current) => {
+          const pending = current.filter(
+            (s) => s.generationId && s.clipStatus !== "done" && s.clipStatus !== "error"
+          );
+          if (pending.length === 0) {
+            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+            setVideoGenerating(false);
+          }
+          return current; // no mutation here; side effects handled below
+        });
+
+        // Fetch status for each pending clip
+        setSceneStates((current) => {
+          const toUpdate = current
+            .map((s, i) => ({ s, i }))
+            .filter(({ s }) => s.generationId && s.clipStatus !== "done" && s.clipStatus !== "error");
+
+          toUpdate.forEach(async ({ s, i }) => {
+            try {
+              const res = await fetch(`/api/reels/video/clip?id=${encodeURIComponent(s.generationId!)}`);
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || "Poll failed");
+
+              if (data.state === "completed") {
+                updateScene(i, { clipStatus: "done", clipUrl: data.videoUrl });
+              } else if (data.state === "failed") {
+                updateScene(i, { clipStatus: "error", clipError: data.failureReason || "Generation failed" });
+              } else {
+                // queued / dreaming
+                updateScene(i, { clipStatus: data.state as ClipStatus });
+              }
+            } catch (err) {
+              updateScene(i, { clipStatus: "error", clipError: err instanceof Error ? err.message : "Poll error" });
+            }
+          });
+
+          return current;
+        });
+      }, 6000);
+    }
+
+    // Start polling when any scene has a pending generationId
+    const hasPending = sceneStates.some(
+      (s) => s.generationId && s.clipStatus !== "done" && s.clipStatus !== "error"
+    );
+    if (hasPending) startPolling();
+
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, [sceneStates.map((s) => s.generationId).join(","), updateScene]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleGenerateAll() {
+    if (!script) return;
+    setVideoGenerating(true);
+
+    // Reset states
+    const initial: SceneVideoState[] = script.scenes.map(() => ({
+      audioStatus: "idle",
+      clipStatus: "idle",
+    }));
+    setSceneStates(initial);
+
+    // Process each scene concurrently
+    await Promise.all(
+      script.scenes.map(async (scene, i) => {
+        // Generate voiceover if there's voiceover text
+        if (scene.voiceover) {
+          updateScene(i, { audioStatus: "generating" });
+          try {
+            const res = await fetch("/api/reels/video/audio", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ text: scene.voiceover }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Voiceover failed");
+            updateScene(i, { audioStatus: "done", audioUrl: data.audioUrl });
+          } catch (err) {
+            updateScene(i, {
+              audioStatus: "error",
+              audioError: err instanceof Error ? err.message : "Voiceover failed",
+            });
+          }
+        }
+
+        // Start Luma clip generation
+        updateScene(i, { clipStatus: "queued" });
+        try {
+          const res = await fetch("/api/reels/video/clip", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ visual: scene.visual, context: script.musicMood }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "Clip generation failed");
+          updateScene(i, { generationId: data.generationId, clipStatus: "queued" });
+        } catch (err) {
+          updateScene(i, {
+            clipStatus: "error",
+            clipError: err instanceof Error ? err.message : "Clip submission failed",
+          });
+        }
+      })
+    );
+  }
+
   async function handleGenerate() {
     setLoading(true);
     setSaved(false);
+    setSceneStates([]);
     try {
       const res = await fetch("/api/reels/generate", {
         method: "POST",
@@ -457,6 +780,22 @@ export default function ReelsPage() {
                       </Badge>
                     ))}
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* Video Production */}
+              <Card>
+                <CardContent className="pt-5">
+                  <VideoProductionPanel
+                    script={script}
+                    sceneStates={
+                      sceneStates.length === script.scenes.length
+                        ? sceneStates
+                        : script.scenes.map(() => ({ audioStatus: "idle", clipStatus: "idle" }))
+                    }
+                    onGenerateAll={handleGenerateAll}
+                    generating={videoGenerating}
+                  />
                 </CardContent>
               </Card>
             </>

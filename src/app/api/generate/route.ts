@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateVariants } from "@/lib/ai/openai";
+import { generateVariants } from "@/lib/ai/provider";
 import { GenerateSchema } from "@/lib/validation";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limiter";
 import { createChildLogger } from "@/lib/logger";

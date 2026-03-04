@@ -22,6 +22,9 @@ export const config = {
     apiRequestsPerMinute: Number(process.env.API_RATE_LIMIT_PER_MINUTE) || 60,
   },
 
+  // AI provider selection: "openai" | "gemini"
+  aiProvider: (process.env.AI_PROVIDER || "openai") as "openai" | "gemini",
+
   // OpenAI
   openai: {
     model: process.env.OPENAI_MODEL || "gpt-4o-mini",
@@ -30,6 +33,15 @@ export const config = {
     retryDelayMs: Number(process.env.OPENAI_RETRY_DELAY_MS) || 1000,
     maxTokens: Number(process.env.OPENAI_MAX_TOKENS) || 4000,
     temperature: Number(process.env.OPENAI_TEMPERATURE) || 0.85,
+  },
+
+  // Google Gemini
+  gemini: {
+    model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
+    maxRetries: Number(process.env.GEMINI_MAX_RETRIES) || 3,
+    retryDelayMs: Number(process.env.GEMINI_RETRY_DELAY_MS) || 1000,
+    maxTokens: Number(process.env.GEMINI_MAX_TOKENS) || 4000,
+    temperature: Number(process.env.GEMINI_TEMPERATURE) || 0.85,
   },
 
   // Facebook Graph API

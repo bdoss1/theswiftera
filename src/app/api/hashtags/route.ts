@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateHashtags } from "@/lib/ai/openai";
+import { generateHashtags } from "@/lib/ai/provider";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limiter";
 import { createChildLogger } from "@/lib/logger";
 import { z } from "zod";

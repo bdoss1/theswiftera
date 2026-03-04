@@ -4,11 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { LayoutDashboard, Sparkles, CheckSquare, Calendar, Settings, History } from "lucide-react";
+import { LayoutDashboard, Sparkles, CheckSquare, Calendar, Settings, History, TrendingUp } from "lucide-react";
 
 const links = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/studio", label: "Studio", icon: Sparkles },
+  { href: "/strategy", label: "Strategy", icon: TrendingUp },
   { href: "/review", label: "Review", icon: CheckSquare },
   { href: "/calendar", label: "Calendar", icon: Calendar },
   { href: "/history", label: "History", icon: History },
